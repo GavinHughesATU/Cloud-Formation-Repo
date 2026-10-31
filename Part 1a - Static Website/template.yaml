@@ -1,21 +1,26 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
+# CloudFormation template for hosting a static website on Amazon S3
 Description: Static website hosted on Amazon S3
 
 Resources:
 
+  # Create the S3 bucket that will host the website
   WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: gavinhughes-static-website-2026
 
+      # Enabling object versioning
       VersioningConfiguration:
         Status: Enabled
 
+      # Enabling static website hosting
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
 
+      # Resource tags
       Tags:
         - Key: Name
           Value: GavinsStaticWebsite
@@ -29,6 +34,7 @@ Resources:
         - Key: Environment
           Value: Development
 
+  # Allowing public users to view the website
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -52,6 +58,7 @@ Resources:
 
 Outputs:
 
+# Output the website URL after deployment
   WebsiteURL:
     Value: !GetAtt WebsiteBucket.WebsiteURL
 
