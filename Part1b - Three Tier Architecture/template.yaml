@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: CloudFormation template implementing a three-tier architecture using EC2 and RDS.
+
+# The Parameters make the template reusable by avoiding hard-coded values.
+Parameters:
+ 
+  # A parameter allowing the EC2 instance size to be allocated during deployment. 
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    
+  # Allows the AMI ID to be changed without modifying the CloudFormation template.  
+  LatestAmi:
+    Type: String
+    Description: Amazon Linux 2 AMI ID
+    
+  # Using a parameter value for the database administrator username.  
+  DatabaseUsername:
+    Type: String
+    Default: admin
+    Description: Database administrator username  
+    
+  # Using a parameter value for the database password to avoid hard-coding credentials. 
+  DatabasePassword:
+    Type: String
+    # NoEcho prevents the password from being displayed in the CloudFormation console.
+    NoEcho: true
+    Description: Database administrator password
+
+Resources:
+
+    #Virtual Private Cloud for a logically isolated virtual network
+    ThreeTierVPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        # Defining the private IP address range available within the VPC.      
+        CidrBlock: 10.0.0.0/16
+
+        Tags:
+          - Key: Name
+            Value: ThreeTierVPC
+          
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+            
+            
+    # Public subnet used by the Web Tier.
+    PublicSubnet:
+      Type: AWS::EC2::Subnet
+
+      Properties:
+        VpcId: !Ref ThreeTierVPC
+        CidrBlock: 10.0.1.0/24
+
+        Tags:
+          - Key: Name
+            Value: PublicSubnet
+                
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+     
+     
+    # First subnet available to the database tier.
+    PrivateSubnet1:
+      Type: AWS::EC2::Subnet
+
+      Properties:
+        VpcId: !Ref ThreeTierVPC
+        CidrBlock: 10.0.2.0/24
+
+        Tags:
+          - Key: Name
+            Value: PrivateSubnet1
+
+          - Key: Project 
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+
+    # Second subnet available to the database tier.
+    PrivateSubnet2:
+      Type: AWS::EC2::Subnet
+
+      Properties:
+        VpcId: !Ref ThreeTierVPC
+        CidrBlock: 10.0.3.0/24
+
+        Tags:
+          - Key: Name
+            Value: PrivateSubnet2
+
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+            
+            
+    # Defines which subnets can be used by the RDS database.
+    DBSubnetGroup:
+      Type: AWS::RDS::DBSubnetGroup
+
+      Properties:
+        DBSubnetGroupDescription: Database subnet group
+
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+
+        Tags:
+          - Key: Name
+            Value: DatabaseSubnetGroup
+
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+    
+    # Provides internet access to resources within the VPC.
+    InternetGateway:
+      Type: AWS::EC2::InternetGateway
+
+      Properties:
+        Tags:
+          - Key: Name
+            Value: ThreeTierIGW
+
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+
+
+    # Attaches the Internet Gateway to the VPC.
+    VPCGatewayAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+
+      Properties:
+        VpcId: !Ref ThreeTierVPC
+
+        InternetGatewayId: !Ref InternetGateway    
+     
+
+    # Route table controlling network traffic within the VPC.
+    PublicRouteTable:
+      Type: AWS::EC2::RouteTable
+
+      Properties:
+        VpcId: !Ref ThreeTierVPC
+
+        Tags:
+          - Key: Name
+            Value: PublicRouteTable
+
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+            
+          
+    # Sends internet-bound traffic through the Internet Gateway.
+    InternetRoute:
+      Type: AWS::EC2::Route
+
+      DependsOn: VPCGatewayAttachment
+
+      Properties:
+        RouteTableId: !Ref PublicRouteTable
+        DestinationCidrBlock: 0.0.0.0/0
+        GatewayId: !Ref InternetGateway
+        
+    # Associates the Public Subnet with the Public Route Table.
+    PublicSubnetRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+
+      Properties:
+        RouteTableId: !Ref PublicRouteTable
+        SubnetId: !Ref PublicSubnet
+
+    #WebSecurityGroup acts as virtual firewalls and control network traffic into the resource
+    WebSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          GroupDescription: Allow HTTP traffic
+          VpcId: !Ref ThreeTierVPC
+         
+          SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+
+          Tags:
+            - Key: Name
+              Value: WebSecurityGroup
+    
+            - Key: Project
+              Value: CloudFormation - Three Tier Architecture
+              
+            - Key: Owner
+              Value: Gavin Hughes
+              
+            - Key: Web
+              Value: SecurityGroup
+    
+    #AppSecurityGroup allows traffic to come through from the web tier
+    AppSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          GroupDescription: Allow traffic from web tier
+          VpcId: !Ref ThreeTierVPC
+
+          SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 8080
+              ToPort: 8080
+              SourceSecurityGroupId: !Ref WebSecurityGroup
+            
+          Tags:
+           - Key: Name
+             Value: AppSecurityGroup
+                  
+           - Key: Project
+             Value: CloudFormation - Three Tier Architecture
+             
+           - Key: Owner
+             Value: Gavin Hughes
+             
+           - Key: App
+             Value: SecurityGroup
+
+    #DatabaseSecurityGroup gives access to the App for DB interactions
+    DatabaseSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          GroupDescription: Allow MySQL traffic from app tier
+          VpcId: !Ref ThreeTierVPC
+         
+          SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 3306
+              ToPort: 3306
+              SourceSecurityGroupId: !Ref AppSecurityGroup
+
+          Tags:
+            - Key: Name
+              Value: DatabaseSecurityGroup
+          
+            - Key: Project
+              Value: CloudFormation - Three Tier Architecture
+             
+            - Key: Owner
+              Value: Gavin Hughes
+             
+            - Key: Database
+              Value: SecurityGroup
+    
+    # The Web Tier serves the website and receives external traffic.
+    WebServer:
+      Type: AWS::EC2::Instance
+      Properties:
+        InstanceType: !Ref InstanceType
+        ImageId: !Ref LatestAmi
+        SubnetId: !Ref PublicSubnet
+        SecurityGroupIds:
+          - !Ref WebSecurityGroup
+
+        Tags:
+          - Key: Name
+            Value: WebServer
+            
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+  
+    # The Application Tier processes business logic and application requests.
+    ApplicationServer:
+      Type: AWS::EC2::Instance
+      Properties:
+       InstanceType: !Ref InstanceType
+       ImageId: !Ref LatestAmi
+       SubnetId: !Ref PrivateSubnet1
+       SecurityGroupIds:
+         - !Ref AppSecurityGroup
+
+       Tags:
+         - Key: Name
+           Value: ApplicationServer
+                       
+         - Key: Project
+           Value: CloudFormation - Three Tier Architecture
+
+         - Key: Owner
+           Value: Gavin Hughes
+  
+    #The Database Tier stores application data (MySQL)
+    Database:
+      Type: AWS::RDS::DBInstance
+      Properties:
+       DBSubnetGroupName: !Ref DBSubnetGroup
+       DBInstanceClass: db.t3.micro
+       AllocatedStorage: 20
+       Engine: mysql
+       PubliclyAccessible: false
+       # Uses a parameter value for the database administrator account.
+       MasterUsername: !Ref DatabaseUsername
+       # Using a parameter value for the database password instead of hard-coding it.
+       MasterUserPassword: !Ref DatabasePassword
+     
+       VPCSecurityGroups:
+         - !Ref DatabaseSecurityGroup
+     
+       Tags:
+          - Key: Name
+            Value: Database
+
+          - Key: Project
+            Value: CloudFormation - Three Tier Architecture
+
+          - Key: Owner
+            Value: Gavin Hughes
+  
+#After the stack is deployed we can use Outputs to capture usefull information like:
+Outputs:
+
+    #The Web Servers Instance ID for reference
+    WebServerId:
+      Description: Web Server Instance ID
+      Value: !Ref WebServer
+    
+    #The Application Servers Instance ID for reference
+    ApplicationServerId:
+      Description: Application Server Instance ID
+      Value: !Ref ApplicationServer
+    
+    #The Databases Endpoint
+    DatabaseEndpoint:
+      Description: Database Endpoint
+      Value: !GetAtt Database.Endpoint.Address
+       
+    #Output the VPC ID   
+    VpcId:
+      Description: VPC ID
+      Value: !Ref ThreeTierVPC
